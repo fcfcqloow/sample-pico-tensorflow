@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8">
+  </head>
+  <body>
+    <video id="video" width="640" height="480" playsinline muted autoplay></video>
+    <canvas id="canvas" width="640" height="480"></canvas>
+<script>
+
+// https://docs.opencv.org/4.2.0/df/d6c/tutorial_js_face_detection_camera.html
+const width           = 640;
+const height          = 480;
+const fps             = 30;
+const faceCascadeFile = './haarcascade_frontalface_default.xml';
+const videoElem       = document.getElementById('video');
+const canvasElem      = document.getElementById('canvas');
+
+const onLoadedOpenCV = () => {
+  const utils        = new Utils('error-message'); 
+  const videoCapture = new cv.VideoCapture(videoElem);
+  const classifier   = new cv.CascadeClassifier();
+  utils.createFileFromUrl(faceCascadeFile, faceCascadeFile, console.log);
+ 
+  let isStreaming = false;
+  if (isStreaming) return;
+  isStreaming = true;
+  navigator.mediaDevices.getUserMedia({ video: true })
+    .then((stream) => {
+      const matSrc  = new cv.Mat(height, width, cv.CV_8UC4);
+      const matDst  = new cv.Mat(height, width, cv.CV_8UC4);
+      const matGrey = new cv.Mat();
+      const faces   = new cv.RectVector();
+      const processVideo = () => {
+        const begin = Date.now();
+        videoCapture.read(matSrc);
+        matSrc.copyTo(matDst);
+        cv.cvtColor(matDst, matGrey, cv.COLOR_RGBA2GRAY, 0);
+        classifier.detectMultiScale(matGrey, faces, 1.1, 3, 0);
+        for(let i = 0; i < faces.size(); ++i) {
+          const face  = faces.get(i);
+          const point1 = new cv.Point(face.x, face.y);
+          const point2 = new cv.Point(face.x + face.width, face.y + face.height);
+          cv.rectangle(matDst, point1, point2, [255, 0, 0, 255]);
+        }
+        cv.imshow('canvas', matDst);
+        setTimeout(processVideo, 1000 / fps - (Date.now() - begin));
+      }
+      
+      videoElem.srcObject = stream;
+      videoElem.play();
+      
+      classifier.load(faceCascadeFile);
+      setTimeout(processVideo, 0);
+    })
+    .catch(console.error);
+  onStart();
+};
+const onCvLoaded = () => cv.onRuntimeInitialized = onLoadedOpenCV;
+window.addEventListener('load', onLoadedOpenCV);
+
+</script>
+  <script src="https://docs.opencv.org/4.2.0/utils.js"></script>
+  <script src="https://docs.opencv.org/4.2.0/opencv.js" onload="onCvLoaded();"></script>
+  </body>
+</html>
