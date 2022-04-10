@@ -54,7 +54,6 @@ const onLoadedOpenCV = () => {
       setTimeout(processVideo, 0);
     })
     .catch(console.error);
-  onStart();
 };
 const onCvLoaded = () => cv.onRuntimeInitialized = onLoadedOpenCV;
 window.addEventListener('load', onLoadedOpenCV);
