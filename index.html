@@ -4,62 +4,68 @@
     <meta charset="UTF-8">
   </head>
   <body>
-    <video id="video" width="640" height="480" playsinline muted autoplay></video>
+    <video id="video" width="640" height="480" playsinline muted autoplay style="position: fixed; top: -100%; left: -100%"></video>
     <canvas id="canvas" width="640" height="480"></canvas>
-<script>
+    <script>
+    // https://docs.opencv.org/4.2.0/df/d6c/tutorial_js_face_detection_camera.html
+    const width       = 640;
+    const height      = 480;
+    const fps         = 15;
+    const videoElem   = document.getElementById('video');
+    const canvasElem  = document.getElementById('canvas');
+    const ctx         = canvasElem.getContext("2d");
 
-// https://docs.opencv.org/4.2.0/df/d6c/tutorial_js_face_detection_camera.html
-const width           = 640;
-const height          = 480;
-const fps             = 30;
-const faceCascadeFile = './haarcascade_frontalface_default.xml';
-const videoElem       = document.getElementById('video');
-const canvasElem      = document.getElementById('canvas');
+    // Tesnsorflowが読み込まれた時に実行
+    const onLoadedTensorflow = () => {
+      const kerasModel  = `model/model.json`;
 
-const onLoadedOpenCV = () => {
-  const utils        = new Utils('error-message'); 
-  const videoCapture = new cv.VideoCapture(videoElem);
-  const classifier   = new cv.CascadeClassifier();
-  utils.createFileFromUrl(faceCascadeFile, faceCascadeFile, console.log);
- 
-  let isStreaming = false;
-  if (isStreaming) return;
-  isStreaming = true;
-  navigator.mediaDevices.getUserMedia({ video: true })
-    .then((stream) => {
-      const matSrc  = new cv.Mat(height, width, cv.CV_8UC4);
-      const matDst  = new cv.Mat(height, width, cv.CV_8UC4);
-      const matGrey = new cv.Mat();
-      const faces   = new cv.RectVector();
-      const processVideo = () => {
-        const begin = Date.now();
-        videoCapture.read(matSrc);
-        matSrc.copyTo(matDst);
-        cv.cvtColor(matDst, matGrey, cv.COLOR_RGBA2GRAY, 0);
-        classifier.detectMultiScale(matGrey, faces, 1.1, 3, 0);
-        for(let i = 0; i < faces.size(); ++i) {
-          const face  = faces.get(i);
-          const point1 = new cv.Point(face.x, face.y);
-          const point2 = new cv.Point(face.x + face.width, face.y + face.height);
-          cv.rectangle(matDst, point1, point2, [255, 0, 0, 255]);
-        }
-        cv.imshow('canvas', matDst);
-        setTimeout(processVideo, 1000 / fps - (Date.now() - begin));
-      }
-      
-      videoElem.srcObject = stream;
-      videoElem.play();
-      
+      const process = (model) => {
+        const inputImage = tf.browser.fromPixels(canvasElem, 3);
+        model.predict(inputImage.reshape(-1, )).print();
+      };
+
+      tf.loadGraphModel(kerasModel)
+        .then(model =>  setInterval(() => process(model), 1000 / fps))
+        .catch(console.log);
+    };
+
+    // OpenCVが読み込まれた時に実行
+    const onLoadedOpenCV = () => {
+      const faceCascadeFile = './haarcascade_frontalface_alt.xml';
+      const utils           = new Utils('error-message'); 
+      const videoCapture    = new cv.VideoCapture(videoElem);
+      const classifier      = new cv.CascadeClassifier();
+      const src             = new cv.Mat(height, width, cv.CV_8UC4);
+      const gray            = new cv.Mat();
+      const faces           = new cv.RectVector();
+
+      utils.createFileFromUrl(faceCascadeFile, faceCascadeFile, console.log);
       classifier.load(faceCascadeFile);
-      setTimeout(processVideo, 0);
-    })
-    .catch(console.error);
-};
-const onCvLoaded = () => cv.onRuntimeInitialized = onLoadedOpenCV;
-window.addEventListener('load', onLoadedOpenCV);
 
-</script>
-  <script src="https://docs.opencv.org/4.2.0/utils.js"></script>
-  <script src="https://docs.opencv.org/4.2.0/opencv.js" onload="onCvLoaded();"></script>
+      const process = () => {
+        videoCapture.read(src);
+        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
+        classifier.detectMultiScale(gray, faces, 1.1, 3, 0);
+        if (faces.size() > 0) {
+          const face = faces.get(0);
+          ctx.drawImage(videoElem, face.x*2, face.y, face.width*2, face.height*2,  0, 0, width, height)
+        }
+        // src.delete();
+        // gray.delete();
+      }
+      navigator.mediaDevices.getUserMedia({ video: true })
+        .then((stream) => {
+          videoElem.srcObject = stream;
+          videoElem.play();
+          setInterval(process, 1000 / fps);
+        })
+        .catch(console.error);
+    };
+    // window.addEventListener('load', onLoadedOpenCV);
+
+    </script>
+    <script src="https://docs.opencv.org/4.2.0/utils.js"></script>
+    <script src="https://docs.opencv.org/4.2.0/opencv.js" onload="cv.onRuntimeInitialized = onLoadedOpenCV"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@2.0.0/dist/tf.min.js" onload="onLoadedTensorflow()"></script>
   </body>
 </html>
