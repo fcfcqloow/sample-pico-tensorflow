@@ -27,18 +27,19 @@
 
 		// Tesnsorflowが読み込まれた時に実行
 		const onLoadedTensorflow = () => {
-      loadTensorflowElem.textContent = '';
 			const fps = 2;
 			const kerasModel  = `model/model.json`;
 			const process = (model) => {
+        loadTensorflowElem.textContent = '';
 			  let inputImage = tf.browser.fromPixels(faceCanvasElem, 3).toFloat();
-			  inputImage = tf.expandDims(inputImage, 0);
+        inputImage = tf.expandDims(inputImage, 0);
 			  const result = model.predict(inputImage);
-			  result[0].data().then(arr => {
-          tf.argMax(arr).data().then((r) => {
-            genderElem.textContent = r[0] === 0 ? 'Man' : 'Woman';
+			  result[0].data()
+          .then(arr => {
+            tf.argMax(arr).data().then((r) => {
+              genderElem.textContent = r[0] === 0 ? 'Man' : 'Woman';
+            });
           });
-        });
 			  result[1].data()
           .then((arr) => tf.argMax(arr).data().then((r) => {
             ageElem.textContent = JSON.stringify(r[0]);
@@ -46,7 +47,9 @@
 			};
 	  
 			tf.loadGraphModel(kerasModel)
-			  .then(model =>  setInterval(() => process(model), 1000 / fps))
+			  .then(model =>  {
+          setInterval(() => process(model), 1000 / fps);
+        })
 			  .catch(console.log);
     };
 
