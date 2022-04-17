@@ -1,71 +1,118 @@
 <!DOCTYPE html>
-<html lang="ja">
-  <head>
-    <meta charset="UTF-8">
-  </head>
-  <body>
-    <video id="video" width="640" height="480" playsinline muted autoplay style="position: fixed; top: -100%; left: -100%"></video>
-    <canvas id="canvas" width="640" height="480"></canvas>
-    <script>
-    // https://docs.opencv.org/4.2.0/df/d6c/tutorial_js_face_detection_camera.html
-    const width       = 640;
-    const height      = 480;
-    const fps         = 15;
-    const videoElem   = document.getElementById('video');
-    const canvasElem  = document.getElementById('canvas');
-    const ctx         = canvasElem.getContext("2d");
+<html>
+	<head>
+		<meta charset="utf-8">
+		<script src="./pico/camvas.js"></script>
+		<script src="./pico/pico.js"></script>
+		<script src="./pico/lploc.js"></script>
+	</head>
+	<body>
+    <div id="load_tensorflow">downloading Tensorflow.js...</div>
+    <div id="load_pico">downloading pico.js...</div>
+		<canvas width=640 height=480></canvas>
+		<canvas width=64 height=64 id="target" style="position: fixed; top: -1000px; left: 1000px;"></canvas>
+    <p>Age: <span id="age"></span></p>
+    <p>Gender: <span id="gender"></span></p>
+	</div>
+	</body>
+	<script>
+    let do_puploc = () => [-1.0, -1.0];
+    let facefinder_classify_region =  () => -1.0;
+    const update_memory = pico.instantiate_detection_memory(5);
+    const faceCanvasElem = document.getElementById('target');
+    const ageElem = document.getElementById('age');
+    const genderElem = document.getElementById('gender');
+    const loadTensorflowElem = document.getElementById('load_tensorflow');
+    const loadPicoElem = document.getElementById('load_pico');
 
-    // Tesnsorflowが読み込まれた時に実行
-    const onLoadedTensorflow = () => {
-      const kerasModel  = `model/model.json`;
+		// Tesnsorflowが読み込まれた時に実行
+		const onLoadedTensorflow = () => {
+      loadTensorflowElem.textContent = '';
+			const fps = 2;
+			const kerasModel  = `model/model.json`;
+			const process = (model) => {
+			  let inputImage = tf.browser.fromPixels(faceCanvasElem, 3).toFloat();
+			  inputImage = tf.expandDims(inputImage, 0);
+			  const result = model.predict(inputImage);
+			  result[0].data().then(arr => {
+          tf.argMax(arr).data().then((r) => {
+            genderElem.textContent = r[0] === 0 ? 'Man' : 'Woman';
+          });
+        });
+			  result[1].data()
+          .then((arr) => tf.argMax(arr).data().then((r) => {
+            ageElem.textContent = JSON.stringify(r[0]);
+          }));
+			};
+	  
+			tf.loadGraphModel(kerasModel)
+			  .then(model =>  setInterval(() => process(model), 1000 / fps))
+			  .catch(console.log);
+    };
 
-      const process = (model) => {
-        const inputImage = tf.browser.fromPixels(canvasElem, 3);
-        model.predict(inputImage.reshape(-1, )).print();
+    const loadCascade = () => {
+      const cascadeurl = 'https://raw.githubusercontent.com/nenadmarkus/pico/c2e81f9d23cc11d1a612fd21e4f9de0921a5d0d9/rnt/cascades/facefinder';
+      return fetch(cascadeurl).then(function(response) {
+        response.arrayBuffer().then(function(buffer) {
+          facefinder_classify_region = pico.unpack_cascade(new Int8Array(buffer));
+        });
+      })
+    };
+
+    const loadPuploc = () => {
+      const puplocurl = 'https://drone.nenadmarkus.com/data/blog-stuff/puploc.bin'
+      return fetch(puplocurl).then(function(response) {
+        response.arrayBuffer().then(function(buffer) {
+          do_puploc = lploc.unpack_localizer(new Int8Array(buffer));
+        });
+      });
+    };
+    (async () => {
+      await loadCascade();
+      await loadPuploc();
+      loadPicoElem.textContent = '';
+    })();
+
+    const ctx = document.getElementsByTagName('canvas')[0].getContext('2d');
+    const tCtx = faceCanvasElem.getContext('2d');
+    new camvas(ctx, (video, dt) => {
+      const rgba = ctx.getImageData(0, 0, 640, 480).data;
+      const rgba_to_grayscale = (rgba, nrows, ncols) => {
+        let gray = new Uint8Array(nrows*ncols);
+        for(let r = 0; r < nrows; ++r)
+          for(let c = 0; c < ncols; ++c)
+            gray[r*ncols + c] = (2*rgba[r*4*ncols+4*c+0]+7*rgba[r*4*ncols+4*c+1]+1*rgba[r*4*ncols+4*c+2])/10;
+        return gray;
       };
-
-      tf.loadGraphModel(kerasModel)
-        .then(model =>  setInterval(() => process(model), 1000 / fps))
-        .catch(console.log);
-    };
-
-    // OpenCVが読み込まれた時に実行
-    const onLoadedOpenCV = () => {
-      const faceCascadeFile = './haarcascade_frontalface_alt.xml';
-      const utils           = new Utils('error-message'); 
-      const videoCapture    = new cv.VideoCapture(videoElem);
-      const classifier      = new cv.CascadeClassifier();
-      const src             = new cv.Mat(height, width, cv.CV_8UC4);
-      const gray            = new cv.Mat();
-      const faces           = new cv.RectVector();
-
-      utils.createFileFromUrl(faceCascadeFile, faceCascadeFile, console.log);
-      classifier.load(faceCascadeFile);
-
-      const process = () => {
-        videoCapture.read(src);
-        cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY, 0);
-        classifier.detectMultiScale(gray, faces, 1.1, 3, 0);
-        if (faces.size() > 0) {
-          const face = faces.get(0);
-          ctx.drawImage(videoElem, face.x*2, face.y, face.width*2, face.height*2,  0, 0, width, height)
-        }
-        // src.delete();
-        // gray.delete();
+      ctx.drawImage(video, 0, 0, 640, 480);
+      image = {
+        pixels : rgba_to_grayscale(rgba, 480, 640),
+        nrows  : 480,
+        ncols  : 640,
+        ldim   : 640,
       }
-      navigator.mediaDevices.getUserMedia({ video: true })
-        .then((stream) => {
-          videoElem.srcObject = stream;
-          videoElem.play();
-          setInterval(process, 1000 / fps);
-        })
-        .catch(console.error);
-    };
-    // window.addEventListener('load', onLoadedOpenCV);
-
-    </script>
-    <script src="https://docs.opencv.org/4.2.0/utils.js"></script>
-    <script src="https://docs.opencv.org/4.2.0/opencv.js" onload="cv.onRuntimeInitialized = onLoadedOpenCV"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@2.0.0/dist/tf.min.js" onload="onLoadedTensorflow()"></script>
-  </body>
+      params = {
+        shiftfactor : 0.1,
+        minsize     : 100,
+        maxsize     : 1000,
+        scalefactor : 1.1,
+      }
+      dets = pico.run_cascade(image, facefinder_classify_region, params);
+      dets = update_memory(dets);
+      dets = pico.cluster_detections(dets, 0.2);
+      if (dets.length > 0) {
+        const det = dets[0];
+        const x = det[1];
+        const y = det[0];
+        const diameter = det[2];
+        ctx.beginPath();
+        ctx.rect(x-diameter/2, y-diameter/2, diameter+5, diameter+5);
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = 'red';
+        ctx.stroke();
+        tCtx.drawImage(video, x*1.5, y/1.5, diameter*2, diameter*2, 0, 0, 64, 64);
+      }
+    });
+	</script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@2.8.0/dist/tf.min.js" onload="onLoadedTensorflow()"></script>
 </html>

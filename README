@@ -1,1 +1,8 @@
 sudo /Applications/Google\ Chrome.app/Contents/MacOS/Google\ Chrome --args -allow-file-access-from-files
+
+
+## Used by 
+
+* https://github.com/nenadmarkus/picojs
+* https://www.tensorflow.org/js?hl=ja
+
